@@ -1,0 +1,2 @@
+class MongoDBClient:
+    pass
