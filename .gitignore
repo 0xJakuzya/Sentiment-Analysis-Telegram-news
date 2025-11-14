@@ -5,3 +5,4 @@ sessions/
 .env.local
 .dockerignore
 __pycache__
+data/
