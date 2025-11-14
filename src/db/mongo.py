@@ -4,41 +4,57 @@ from datetime import datetime
 from pathlib import Path
 
 from pymongo import MongoClient
-from pymongo.errors import PyMongoError
+from pymongo.errors import PyMongoError, BulkWriteError
 
 
 class MongoDBClient:
 
     def __init__(self, uri=None, db_name=None, collection_name=None):
-
         self.uri = uri or os.getenv("MONGODB_URI")
         self.db_name = db_name or os.getenv("MONGODB_DB")
         self.collection_name = collection_name or os.getenv("MONGODB_COLLECTION")
         self._client = None
         self._collection = None
         self._connect()
+        self._create_indexes()    
 
-    #подключение к mongodb
     def _connect(self):
-
         try:
             self._client = MongoClient(self.uri, serverSelectionTimeoutMS=2000)
             self._client.server_info()  
             self._collection = self._client[self.db_name][self.collection_name]
             print(f"Подключено к MongoDB: {self.db_name}/{self.collection_name}")
-
         except Exception as e:
             print(f"Не удалось подключиться к MongoDB: {e}")
             self._client = None
             self._collection = None
 
+    def _create_indexes(self):
+        if not self.available:
+            return
+        try:
+            existing_indexes = self._collection.index_information()
+            if "message_channel_unique" in existing_indexes:
+                self._collection.drop_index("message_channel_unique")
+                print("Старый индекс удален")
+
+            self._collection.create_index(
+                [("id", 1), ("channel_id", 1)], 
+                unique=True, 
+                name="message_channel_unique"
+            )
+            self._collection.create_index([("date", -1)], name="date_desc")
+            self._collection.create_index([("channel_id", 1)], name="channel_id")
+            print("Все индексы успешно созданы")
+            
+        except Exception as e:
+            print(f"Ошибка при создании индексов: {e}")
+
     @property
     def available(self):
         return self._collection is not None
 
-    #cохранение json-данные в папку data/raw в формате messages_{timestamp}.json
     def _save_to_raw_files(self, messages):
-        
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filepath = f"data/raw/messages_{timestamp}.json"
@@ -59,9 +75,7 @@ class MongoDBClient:
         except Exception as e:
             print(f"Ошибка при сохранении в JSON: {e}")
 
-    #сохранение данных в mongodb и в data/raw(data lake)
     def save_messages(self, messages):
-
         if not messages:
             return 0
 
@@ -71,20 +85,30 @@ class MongoDBClient:
             doc.setdefault("saved_at", datetime.utcnow())
             normalized.append(doc)
 
-        # data/raw
         self._save_to_raw_files(normalized)
 
-        # mongodb
         if self.available:
-            try:
-                result = self._collection.insert_many(normalized, ordered=False)
-                print(f"Сохранено {len(result.inserted_ids)} сообщений в MongoDB")
-                return len(result.inserted_ids)
-            except PyMongoError as e:
-                print(f"Ошибка при сохранении в MongoDB: {e}")
-                return 0
-        
-        print("MongoDB недоступна. Сообщения не сохранены.")
+            saved_count = 0
+            for message in normalized:
+                try:
+                    result = self._collection.update_one(
+                        {
+                            "id": message["id"],
+                            "channel_id": message["channel_id"]
+                        },
+                        {
+                            "$setOnInsert": message  
+                        },
+                        upsert=True
+                    )
+                    if result.upserted_id:
+                        saved_count += 1
+                except PyMongoError as e:
+                    print(f"Ошибка при сохранении сообщения {message.get('id')}: {e}")
+                    continue
+            print(f"Сохранено {saved_count} новых сообщений в MongoDB")
+            return saved_count
+        print("MongoDB недоступна. Сообщения сохранены только в JSON.")
         return 0
 
     def close(self) -> None:
