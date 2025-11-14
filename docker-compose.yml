@@ -26,8 +26,11 @@ services:
       - MONGODB_URI=${MONGODB_URI}
       - MONGODB_DB=${MONGODB_DB}
       - MONGODB_COLLECTION=${MONGODB_COLLECTION}
+      - SESSION_DIR=${SESSION_DIR}
+      - SESSION_NAME=${SESSION_NAME}
     volumes:
       - ./data:/app/data
+      - ./config:/app/config
       - telegram_sessions:/app/sessions
     networks:
       - telegram_network

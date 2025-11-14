@@ -2,29 +2,32 @@ import asyncio
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from dotenv import load_dotenv
 
 from telethon import TelegramClient
 from telethon.errors import RPCError, SessionPasswordNeededError
+from src.db.mongo import MongoDBClient
 
-from config import TELEGRAM_API_HASH, TELEGRAM_API_ID
-from mongo import MongoDBClient
-
+load_dotenv()
 
 class TelegramScraper:
 
-    def __init__(self, session_name: str, mongo_client: Optional[MongoDBClient] = None):
-        self.api_id = TELEGRAM_API_ID
-        self.api_hash = TELEGRAM_API_HASH
-
-        session_dir = os.getenv("SESSION_DIR", "sessions")
+    def __init__(self, session_name: str, mongo_client):
+        self.api_id = os.getenv("TELEGRAM_API_ID")
+        self.api_hash = os.getenv("TELEGRAM_API_HASH")
+    
+        session_dir = os.getenv("SESSION_DIR")
         Path(session_dir).mkdir(parents=True, exist_ok=True)
+
+        session_name = os.getenv("SESSION_NAME")
         session_path = os.path.join(session_dir, session_name)
-
         self.session_name = session_path
-        self.client: Optional[TelegramClient] = None
-        self.db_client = mongo_client or MongoDBClient() 
 
-    async def connect(self) -> bool:
+        self.client = None
+        self.db_client = mongo_client or MongoDBClient()
+
+    async def connect(self):
+
         try:
             self.client = TelegramClient(self.session_name, self.api_id, self.api_hash)
             await self.client.start()
@@ -47,12 +50,12 @@ class TelegramScraper:
             print(f"Ошибка подключения: {e}")
             return False
 
-    async def disconnect(self) -> None:
+    async def disconnect(self):
         if self.client:
             await self.client.disconnect()
             print("Отключен от Telegram")
 
-    async def get_channel(self, channel_name: str):
+    async def get_channel(self, channel_name):
         if not self.client:
             raise RuntimeError("Telegram client is not connected. Call connect() first.")
 
@@ -65,7 +68,7 @@ class TelegramScraper:
             print(f"Ошибка при получении канала '{channel_name}': {exc}")
             return None
 
-    async def parse_channel(self, channel_name: str, limit: int = 100) -> List[Dict[str, Any]]:
+    async def parse_channel(self, channel_name, limit=100):
         
         if not self.client:
             raise RuntimeError("Telegram client is not connected. Call connect() first.")
@@ -74,7 +77,7 @@ class TelegramScraper:
         if channel is None:
             return []
 
-        messages: List[Dict[str, Any]] = []
+        messages = []
         async for message in self.client.iter_messages(channel, limit=limit):
             if not getattr(message, "message", None):
                 continue
@@ -92,7 +95,7 @@ class TelegramScraper:
 
         return messages
 
-    def save2mongodb(self, messages: List[Dict[str, Any]]) -> int:
+    def save2mongodb(self, messages):
         if not messages:
             print("Нет сообщений для сохранения.")
             return 0
