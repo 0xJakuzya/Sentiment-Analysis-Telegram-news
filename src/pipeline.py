@@ -1,69 +1,69 @@
 import asyncio
 import os
 import sys
-import json
 sys.path.append('src')
+sys.path.append('scripts')
 
+from config import config  
 from telegram_scraper import TelegramScraper
 from mongo import MongoDBClient
-from preprocessing import TextPreprocessor
-from embedding import FeatureExtractor  
-from classification import SentimentModel
+from preprocessing import TextProcessor
 
 class Pipeline:
-    def __init__(self, session_name, mongo_config_path="config/mongo_config.json"):
-        self.session_name = session_name
-        self.mongo_client = MongoDBClient(mongo_config_path)
-        self.scraper = TelegramScraper(session_name, self.mongo_client)
-        # self.preprocessor = TextPreprocessor()
-        # self.embedder = FeatureExtractor()
-        # self.classifier = SentimentModel()
 
-    def load_channels(self, channels_file="config/channels.json"):
-        with open(channels_file) as f:
-            return json.load(f)
+    def __init__(self, session_name):
+        self.session_name = session_name
+        self.mongo_client = MongoDBClient(config.get("mongo_config"))
+        self.scraper = TelegramScraper(session_name, self.mongo_client)
+        self.text_processor = TextProcessor(config.get("preprocessing", {}).get("text_processor", {}))
+        # self.embedder = FeatureExtractor()
+        # self.classifier = Sentiment
+
+    def _load_channels(self):
+        return config.get("channels", [])
 
     async def scrape_channel(self, channel_name, limit):
         await self.scraper.connect()
-        messages = await self.scraper.parse_channel(channel_name, limit)
-        await self.scraper.disconnect()
-        if messages:
-            self.scraper.save2mongodb(messages)
-        return messages
-
-    def get_unprocessed_messages(self):
-        messages = self.mongo_client.get_all_messages()
-        return [msg for msg in messages if not msg.get('is_processed')]
+        try:
+            messages = await self.scraper.parse_channel(channel_name, limit)
+            if messages:
+                self.scraper.save2mongodb(messages)
+            return messages
+        finally:
+            await self.scraper.disconnect()
 
     def preprocess_messages(self, messages):
+        for message in messages:
+            if "message" in message:
+                message["cleaned_message"] = self.text_processor(message["message"])
+                message["is_processed"] = True
         return messages
 
     def classify_messages(self, messages):
+        for message in messages:
+            message["sentiment"] = None
+            message["confidence"] = None
         return messages
 
     def save_results(self, messages):
-        return messages
+        self.mongo_client.save_processed_messages(messages)
 
-    async def run_full_pipeline(self, channels_file="config/channels.json", limit=10):
-
-        channels = self.load_channels(channels_file)
-        for channel in channels:
-            await self.scrape_channel(channel, limit)
-        unprocessed = self.get_unprocessed_messages()
-        processed = self.preprocess_messages(unprocessed)
-        classified = self.classify_messages(processed)
-        self.save_results(classified)
+    async def run_full_pipeline(self, limit=10):
+        all_messages = []
+        for channel in self._load_channels():
+            all_messages.extend(await self.scrape_channel(channel, limit))
         
-        return classified
+        processed_messages = self.preprocess_messages(all_messages)
+        classified_messages = self.classify_messages(processed_messages)
+        self.save_results(classified_messages)
+        return classified_messages
 
     def close(self):
         self.mongo_client.close()
 
 if __name__ == "__main__":
-
-    session_name = os.getenv("SESSION_NAME")
-    pipeline = Pipeline(session_name)
+    pipeline = Pipeline(os.getenv("SESSION_NAME", "default_session"))
     try:
-        results = asyncio.run(pipeline.run_full_pipeline())
+        asyncio.run(pipeline.run_full_pipeline(limit=50))
     finally:
         pipeline.close()
