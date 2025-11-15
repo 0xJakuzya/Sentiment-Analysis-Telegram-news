@@ -12,7 +12,10 @@
 
 ## Структура проекта
 ```
-Sentiment-Analysis-Telegram-news/
+Sentiment-Analysis-Telegram-news
+├── config/
+|   ├── channel.json      # Список телеграмм-каналов 
+│   ├── mongo_config.json # Конфигурация MongoDB              
 ├── src/
 │   ├── telegram_scraping # Модуль скрапинга Telegram
 │   ├── preprocessing     # Предобработка текста
@@ -20,10 +23,7 @@ Sentiment-Analysis-Telegram-news/
 │   ├── classification    # Классификация тональности
 │   ├── pipeline          # Пайплайн обработки
 │   └── mongo             # Работа с MongoDB
-├── data/                  # Данные (raw, processed, labeled)
 ├── sessions/              # Telegram сессии
-├── config.py              # Конфигурация
-├── main.py                # Главный скрипт
 ├── requirements.txt       # Зависимости
 ├── Dockerfile             # Docker образ
 └── docker-compose.yml     # Docker Compose конфигурация
