@@ -3,8 +3,8 @@ import json
 import os
 from pathlib import Path
 
-from src.scraping.telegram_scraper import TelegramScraper
-from src.db.mongo import MongoDBClient
+from src.telegram_scraper import TelegramScraper
+from src.mongo import MongoDBClient
 
 
 def load_channels(channels_file):

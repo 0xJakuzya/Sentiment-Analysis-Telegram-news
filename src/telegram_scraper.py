@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from telethon import TelegramClient
 from telethon.errors import RPCError, SessionPasswordNeededError
-from src.db.mongo import MongoDBClient
+from src.mongo import MongoDBClient
 
 load_dotenv()
 
